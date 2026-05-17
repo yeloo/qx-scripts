@@ -34,8 +34,10 @@ NEW_MARKET_BASE = 'https://m.mcloud.139.com'              # 新市场API域名
 OLD_AUTH_BASE = 'https://caiyun.feixin.10086.cn:7071'     # 已废弃
 NEW_AUTH_BASE = 'https://m.mcloud.139.com'                # 新认证API域名
 SSO_URL = 'https://orches.yun.139.com/orchestration/auth-rebuild/token/v1.0/querySpecToken'  # SSO仍可用
-NEW_SSO_URL = 'https://user-njs.yun.139.com/user/querySpecTokenV2'  # 新SSO(加密)
 MLOUD_SSO_URL = 'https://m.mcloud.139.com/ycloud/api/cloud/userdomain/v2/querySpecToken'  # mcloud内SSO
+
+# ===================== 签名密钥(从Web端JS逆向) =====================
+SIGN_SECRET = 'sekaMdYYLIZfbCfm'
 
 
 # 发送通知
@@ -92,6 +94,29 @@ class YP:
         import hashlib
         raw = f'{self.account}{self.timestamp}{random.randint(100000, 999999)}'
         return hashlib.md5(raw.encode()).hexdigest().upper()
+
+    @staticmethod
+    def _generate_signature(request_id, timestamp, nonce):
+        """生成x-signature签名 (从Web端JS逆向: MD5(secret + request_id + timestamp + nonce + secret))"""
+        import hashlib
+        raw = SIGN_SECRET + request_id + timestamp + nonce + SIGN_SECRET
+        return hashlib.md5(raw.encode()).hexdigest()
+
+    @staticmethod
+    def _build_security_headers(body_md5=''):
+        """构建新API所需的安全headers (x-signature, x-nonce, x-timestamp, x-request-id)"""
+        import uuid
+        request_id = str(uuid.uuid4())
+        timestamp = str(int(round(time.time() * 1000)))
+        nonce = str(uuid.uuid4())
+        signature = YP._generate_signature(request_id, timestamp, nonce)
+        headers = {
+            'x-request-id': request_id,
+            'x-timestamp': timestamp,
+            'x-nonce': nonce,
+            'x-signature': signature,
+        }
+        return headers
 
     # 捕获异常
     @staticmethod
@@ -193,7 +218,7 @@ class YP:
             print(sso_data.get('message', 'SSO失败'))
             return None
 
-    # jwt — 使用新域名认证
+    # jwt — 使用新域名认证 (含x-signature签名)
     def jwt(self):
         # 获取jwttoken
         token = self.sso()
@@ -206,14 +231,21 @@ class YP:
                 "marketName": "sign_in_3",
                 "sourceId": "1002"
             }
+            # 构建安全headers
+            sec_headers = self._build_security_headers()
             jwt_headers = {
                 'User-Agent': ua,
-                'Accept': 'application/json, text/plain, */*',
-                'Content-Type': 'application/json',
+                'Accept': '*/*',
+                'Content-Type': 'application/json;charset=UTF-8',
                 'Host': 'm.mcloud.139.com',
                 'Origin': 'https://m.mcloud.139.com',
-                'Referer': 'https://m.mcloud.139.com/portal/mobilecloud/index.html',
+                'Referer': 'https://m.mcloud.139.com/portal/mobilecloud/index.html?path=newsignin&sourceid=1002',
+                'appVersion': '12.6.0.0',
+                'activityId': 'sign_in_3',
+                'showLoading': 'true',
+                'Cache-Control': 'no-cache',
             }
+            jwt_headers.update(sec_headers)
             resp = self.send_request(jwt_url, headers=jwt_headers, data=jwt_payload, method='POST')
             if resp is None:
                 print('-jwt请求失败')
