@@ -64,7 +64,6 @@ class YP:
         self.click_num = 15  # 定义抽奖次数和摇一摇戳一戳次数
         self.draw = 1  # 抽奖次数，首次免费
         self.session = requests.Session()
-        self.device_id = self._generate_device_id()  # 新API需要的deviceId
 
         self.timestamp = str(int(round(time.time() * 1000)))
         self.cookies = {'sensors_stay_time': self.timestamp}
@@ -72,6 +71,7 @@ class YP:
         self.account = cookie.split("#")[1]
         self.auth_token = cookie.split("#")[2]
         self.encrypt_account = self.account[:3] + "*" * 4 + self.account[7:]
+        self.device_id = self._generate_device_id()  # 依赖account和timestamp，需在它们之后调用
         self.fruit_url = 'https://happy.mail.10086.cn/jsp/cn/garden/'
 
         self.jwtHeaders = {
